@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>KamelPay AutoFiller</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header class="head">
+      <div class="brand">
+        <img src="../../icons/icon32.png" alt="" width="20" height="20" />
+        <span>KamelPay AutoFiller</span>
+      </div>
+      <button id="openOptions" class="icon-btn" title="Settings" aria-label="Settings">⚙</button>
+    </header>
+
+    <!-- Shown only when no API key is configured. -->
+    <section id="needsKey" class="panel warn" hidden>
+      <p><strong>No API key set.</strong> The extension needs a DeepSeek API key before it can fill anything.</p>
+      <button id="goToOptions" class="btn primary">Add API key</button>
+    </section>
+
+    <main id="main">
+      <button id="fill" class="btn primary big">
+        <span class="btn-label">Fill this form</span>
+        <span class="btn-hint">Alt+Shift+F</span>
+      </button>
+
+      <label class="toggle">
+        <input type="checkbox" id="overwrite" />
+        <span>Overwrite fields that already have a value</span>
+      </label>
+
+      <div class="row">
+        <button id="highlight" class="btn ghost small">Show detected form</button>
+        <button id="clear" class="btn ghost small">Clear result</button>
+      </div>
+
+      <section id="status" class="panel" hidden>
+        <div class="status-line">
+          <span id="spinner" class="spinner" hidden></span>
+          <span id="statusText"></span>
+        </div>
+        <div id="contextLine" class="muted small"></div>
+      </section>
+
+      <section id="errorPanel" class="panel error" hidden>
+        <div class="panel-title">Something went wrong</div>
+        <p id="errorText"></p>
+      </section>
+
+      <section id="summary" class="panel" hidden>
+        <div class="stats">
+          <div class="stat ok"><b id="statFilled">0</b><span>filled</span></div>
+          <div class="stat warn"><b id="statProblems">0</b><span>problems</span></div>
+          <div class="stat muted"><b id="statSkipped">0</b><span>skipped</span></div>
+        </div>
+      </section>
+
+      <section id="problems" class="panel error" hidden>
+        <div class="panel-title">Needs attention</div>
+        <ul id="problemList" class="list"></ul>
+      </section>
+
+      <section id="notes" class="panel note" hidden>
+        <div class="panel-title">Adjusted locally</div>
+        <ul id="noteList" class="list"></ul>
+      </section>
+
+      <details id="detailsBlock" class="details" hidden>
+        <summary>Filled values</summary>
+        <ul id="filledList" class="list"></ul>
+      </details>
+
+      <details id="skippedBlock" class="details" hidden>
+        <summary>Skipped fields</summary>
+        <ul id="skippedList" class="list"></ul>
+      </details>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

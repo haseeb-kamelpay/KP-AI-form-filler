@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>KamelPay AutoFiller — Settings</title>
+    <link rel="stylesheet" href="../popup/popup.css" />
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body class="options">
+    <div class="wrap">
+      <header class="head">
+        <div class="brand">
+          <img src="../../icons/icon48.png" alt="" width="24" height="24" />
+          <span>KamelPay AutoFiller</span>
+        </div>
+      </header>
+
+      <main>
+        <section class="block">
+          <h2>DeepSeek API key</h2>
+          <p class="muted">
+            Required. Get one at
+            <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noreferrer"
+              >platform.deepseek.com</a
+            >. The key is stored in this browser profile only and is used from the extension's
+            background worker, so it is never exposed to the pages you fill.
+          </p>
+
+          <div class="field">
+            <label for="apiKey">API key</label>
+            <div class="input-row">
+              <input id="apiKey" type="password" placeholder="sk-…" autocomplete="off" spellcheck="false" />
+              <button id="reveal" class="btn ghost small" type="button">Show</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="model">Model</label>
+            <select id="model">
+              <option value="deepseek-chat">deepseek-chat (recommended)</option>
+              <option value="deepseek-reasoner">deepseek-reasoner (slower, no JSON mode)</option>
+            </select>
+          </div>
+
+          <div class="row">
+            <button id="save" class="btn primary">Save</button>
+            <button id="test" class="btn ghost">Test key</button>
+          </div>
+
+          <p id="msg" class="msg" hidden></p>
+        </section>
+
+        <section class="block">
+          <h2>Behaviour</h2>
+
+          <label class="toggle">
+            <input type="checkbox" id="overwrite" />
+            <span>
+              Overwrite fields that already have a value
+              <em class="muted small"
+                >Off by default, so prefilled defaults and partly-completed forms are left
+                alone.</em
+              >
+            </span>
+          </label>
+
+          <label class="toggle">
+            <input type="checkbox" id="autoRetry" />
+            <span>
+              Retry once using the page's own validation errors
+              <em class="muted small"
+                >After filling, any Yup message the form renders is fed back to the model for a
+                single corrective pass.</em
+              >
+            </span>
+          </label>
+        </section>
+
+        <section class="block">
+          <h2>How to use it</h2>
+          <ol class="howto">
+            <li>Open a KamelPay form — a page form, a modal, or a drawer.</li>
+            <li>Click the extension icon, or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd>.</li>
+            <li>
+              The extension scans the visible form, asks DeepSeek for matching test data, and fills
+              it. Anything it could not fill is listed in the popup.
+            </li>
+          </ol>
+          <p class="muted small">
+            The extension only reads the tab you invoke it on, and only at the moment you invoke
+            it — it requests no standing access to any site.
+          </p>
+        </section>
+      </main>
+    </div>
+
+    <script src="options.js"></script>
+  </body>
+</html>
