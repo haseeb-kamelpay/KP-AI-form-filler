@@ -89,7 +89,7 @@ export const DOMAIN_RULES = [
   {
     id: 'emiratesId',
     match: /emirates\s*id|\beid\b|^eid/i,
-    spec: 'Emirates ID as exactly 15 digits with no dashes. Starts with 784, then a 4-digit birth year, then 8 more digits.',
+    spec: 'Emirates ID as exactly 15 digit characters and nothing else — no dashes, no spaces, no "784-" prefix formatting. The punctuated 784-1990-1234567-1 form is display only and is REJECTED on submit. Starts with 784, then a 4-digit birth year, then 8 more digits: 784199027135476',
     regex: /^\d{15}$/,
     gen: genEid,
   },
@@ -127,6 +127,22 @@ export const DOMAIN_RULES = [
     spec: 'Passport number: letters and digits only, at most 20 characters.',
     regex: /^[A-Za-z0-9]{1,20}$/,
     gen: genPassport,
+  },
+  {
+    // Sits after `emiratesId` and `passport` so an already-named field
+    // ("Emirates Id Number", "Passport Number") keeps its own stricter rule.
+    // This one catches the generic label the Add Employee documents grid shows
+    // *before* a document type is chosen — the grid renders
+    // `${documentName || 'Document'} Number`, and the form is scanned while it
+    // still says "Document Number". 15 bare digits is the one shape that
+    // satisfies every branch of the row schema: it is exactly what an Emirates
+    // Id must be, and it is valid alphanumeric ≤20 for Passport and for
+    // Labour Card / Residence Visa.
+    id: 'documentNumber',
+    match: /document\s*(number|no)\b|\bdocumentnumber\b/i,
+    spec: 'Document number: exactly 15 digits, no dashes and no spaces. Use the Emirates ID shape — 784, a 4-digit birth year, then 8 more digits — which is the only value accepted for an Emirates Id and is also valid for every other document type.',
+    regex: /^\d{15}$/,
+    gen: genEid,
   },
   {
     id: 'password',
@@ -221,7 +237,7 @@ export function repairValue(field, value) {
 
   if (rule) {
     // Strip formatting the model likes to add but the forms reject.
-    if (rule.id === 'iban' || rule.id === 'emiratesId' || rule.id === 'trn') {
+    if (['iban', 'emiratesId', 'documentNumber', 'trn'].includes(rule.id)) {
       out = out.replace(/[\s-]/g, '').toUpperCase();
     }
     if (rule.id === 'phone') {

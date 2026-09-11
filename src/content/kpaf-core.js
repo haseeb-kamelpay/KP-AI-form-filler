@@ -112,6 +112,34 @@
   }
 
   /* ---------------------------------------------------------------- *
+   * Placeholder choices
+   * ---------------------------------------------------------------- */
+
+  /**
+   * Is this dropdown text a prompt rather than a choice?
+   *
+   * The v1 portals' `CField` renders `<Select.Option value="">{placeholder}</Select.Option>`
+   * as the first option of every dropdown, and passes `value=""` for an
+   * untouched field. antd matches that empty value to that option and renders
+   * its label as a *selected item* — a real `.ant-select-selection-item`,
+   * indistinguishable from a genuine pick. So an untouched "Select bank name"
+   * reads as filled, and every empty dropdown in admin and employer v1 gets
+   * skipped.
+   *
+   * Two signals, either of which is enough: the text repeats the field's own
+   * label (CField uses one string for both when no separate label is given),
+   * or it reads as an instruction. Judged only for dropdowns, and only to
+   * decide whether a field still needs filling — a false positive costs one
+   * re-fill, a false negative costs the whole field.
+   */
+  function isPlaceholderChoice(text, fieldLabel) {
+    const t = clean(text).toLowerCase();
+    if (!t) return false;
+    if (fieldLabel && t === clean(fieldLabel).toLowerCase()) return true;
+    return /^(-+\s*|\.{2,}\s*)?(please\s+)?(select|choose|pick)\b/.test(t);
+  }
+
+  /* ---------------------------------------------------------------- *
    * Labels
    * ---------------------------------------------------------------- */
 
@@ -330,6 +358,7 @@
     pressEscape,
     blur,
     labelFor,
+    isPlaceholderChoice,
     sectionFor,
     humanise,
     clean,
