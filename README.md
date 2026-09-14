@@ -22,8 +22,8 @@ The extension will not run without a key.
 
 ## Use
 
-Open a form — a page, a modal, or a drawer — then either click the extension icon and press
-**Fill this form**, or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd>.
+Open a form — on the page, or in a modal, drawer or popover — then either click the extension
+icon and press **Fill this form**, or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd>.
 
 The popup reports what happened: how many fields were filled, which ones failed and why, which
 were left alone, and any value the extension had to correct itself. **Show detected form**
@@ -49,9 +49,22 @@ popup  ──run──▶  service worker
 
 ### Finding the form
 
-An open modal wins, then an open drawer, then whichever `<form>` / `.c-form` / `.cc-form` on the
-page holds the most fillable controls. Header search boxes, table filters, pagination and menus
-are excluded.
+Anything floating over the page wins — a modal, a drawer, a native `<dialog>`, or any element
+that calls itself a dialog through ARIA. When several are open at once the topmost one is
+chosen by z-index, so a modal launched from a drawer beats the drawer behind it. Popovers and
+`dropdownRender` panels count too, but only when they actually hold a fillable control;
+otherwise every open menu would hijack the scan.
+
+A modal or a drawer wins even when it turns out to hold no fields. It covers the page, so
+reporting "nothing to fill here" is better than quietly filling a form the user cannot see.
+
+With nothing floating, the target is whichever `<form>` / `.c-form` / `.cc-form` on the page
+holds the most fillable controls. Header search boxes, table filters, pagination and menus are
+excluded, as is everything in a layer other than the chosen one.
+
+Both Ant Design generations are recognised. antd 6 renamed the modal panel `-content` to
+`-container` and the drawer panel `-content` to `-section`, and the portals straddle that
+release, so the selectors list both.
 
 ### Identifying fields
 

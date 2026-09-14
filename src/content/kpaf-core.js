@@ -247,12 +247,19 @@
    */
   function sectionFor(el) {
     const SELECTOR =
-      'h1, h2, h3, h4, h5, .form-title, .ant-modal-title, .ant-drawer-title, .cc-form__section-title, legend';
+      'h1, h2, h3, h4, h5, .form-title, .ant-modal-title, .ant-drawer-title, ' +
+      '.ant-popover-title, .cc-form__section-title, legend';
 
-    // A modal or drawer title wins, since it names the whole task.
-    const shell = el.closest('.ant-modal-content, .ant-drawer-content');
+    // The title of whatever surface the field sits on wins, since it names the
+    // whole task. Both class-name generations are listed: antd 6 renamed the
+    // modal panel `-content` to `-container` and the drawer panel `-content`
+    // to `-section`, and the portals span that release.
+    const shell = el.closest(
+      '.ant-modal-container, .ant-modal-content, .ant-drawer-section, .ant-drawer-content, ' +
+        '.ant-modal, .ant-drawer, .ant-popover',
+    );
     if (shell) {
-      const t = shell.querySelector('.ant-modal-title, .ant-drawer-title');
+      const t = shell.querySelector('.ant-modal-title, .ant-drawer-title, .ant-popover-title');
       if (t) {
         const text = clean(t.textContent);
         if (text) return text;

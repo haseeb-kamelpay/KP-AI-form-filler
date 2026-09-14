@@ -25,31 +25,126 @@
    * Container detection
    * ---------------------------------------------------------------- */
 
+  /** Anything that calls itself a dialog without using antd's markup. */
+  const GENERIC_DIALOG = '[role="dialog"], [role="alertdialog"], [aria-modal="true"]';
+
+  /**
+   * Every layer currently floating above the page.
+   *
+   * Two generations of class names have to be recognised at once. Ant Design 6
+   * renamed the modal panel `-content` to `-container` and the drawer panel
+   * `-content` to `-section`, and the portals straddle that release: admin and
+   * employer v1 are on antd 5, employer v2 on antd 6. Matching both is what
+   * keeps one scanner working across all three. The generic `role="dialog"`
+   * pass at the end catches custom and non-antd surfaces.
+   *
+   * `el` is the region the form lives in and `shell` is the whole layer — the
+   * title sits outside the panel in a drawer, and the stacking order is set on
+   * the layer, not the panel.
+   *
+   * `blocking` marks a surface that covers the page. A modal or a drawer is
+   * the target even when it turns out to hold no fields, because the form
+   * behind it is unreachable and filling it unseen would be worse than
+   * reporting nothing. A popover or a dropdown is transient and usually just a
+   * menu, so it only takes over when it actually holds something fillable.
+   */
+  function floatingSurfaces() {
+    const found = [];
+
+    const add = (el, shell, kind, blocking) => {
+      if (!el || !C.isVisible(el)) return;
+      // One layer is reachable through several selectors — an antd modal panel
+      // also carries `role="dialog"` on its parent. Keep the first, most
+      // specific hit and ignore anything that nests with it.
+      if (found.some((s) => s.el === el || s.el.contains(el) || el.contains(s.el))) return;
+      found.push({ el, shell: shell || el, kind, blocking, floating: true });
+    };
+
+    for (const wrap of document.querySelectorAll('.ant-modal-wrap')) {
+      add(wrap.querySelector('.ant-modal-container, .ant-modal-content'), wrap, 'modal', true);
+    }
+
+    for (const root of document.querySelectorAll('.ant-drawer-open')) {
+      // The body, not the whole panel: a drawer's header holds the `extra`
+      // slot, which is where these portals put bulk-action toolbars.
+      const body =
+        root.querySelector('.ant-drawer-body') ||
+        root.querySelector('.ant-drawer-section, .ant-drawer-content');
+      add(body, root, 'drawer', true);
+    }
+
+    for (const dialog of document.querySelectorAll('dialog[open]')) {
+      add(dialog, dialog, 'dialog', true);
+    }
+
+    // `dropdownRender` and the column-filter popovers put real inputs in here.
+    for (const pop of document.querySelectorAll('.ant-popover')) {
+      add(pop.querySelector('.ant-popover-inner') || pop, pop, 'popover', false);
+    }
+    for (const dd of document.querySelectorAll('.ant-dropdown')) {
+      add(dd, dd, 'dropdown', false);
+    }
+
+    for (const el of document.querySelectorAll(GENERIC_DIALOG)) {
+      add(el, el, 'dialog', false);
+    }
+
+    return found;
+  }
+
+  /**
+   * The stacking level a layer paints at.
+   *
+   * antd writes a z-index onto each layer as it opens, so a modal launched
+   * from a drawer — or a second modal stacked on the first — sits higher than
+   * the thing that opened it. Reading it back is how we pick the one the user
+   * is actually looking at rather than the one that happens to be last in the
+   * DOM.
+   */
+  function stackDepth(el) {
+    let z = 0;
+    for (let node = el; node && node !== document.documentElement; node = node.parentElement) {
+      const value = Number.parseInt(getComputedStyle(node).zIndex, 10);
+      if (Number.isFinite(value) && value > z) z = value;
+    }
+    return z;
+  }
+
+  /** Highest layer wins; between layers at the same height, the later mount. */
+  function topmost(surfaces) {
+    let best = null;
+    let bestZ = -Infinity;
+    for (const surface of surfaces) {
+      const z = stackDepth(surface.shell);
+      const later =
+        best &&
+        (best.el.compareDocumentPosition(surface.el) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+      if (!best || z > bestZ || (z === bestZ && later)) {
+        best = surface;
+        bestZ = z;
+      }
+    }
+    return best;
+  }
+
   /**
    * Find the region that holds "the form the user is looking at".
    *
-   * An open modal or drawer beats everything, because in these portals that is
-   * almost always the thing you just opened in order to fill it. Only when
-   * nothing is floating do we fall back to page-level forms.
+   * Anything floating beats everything, because in these portals a surface you
+   * had to open is almost always the thing you opened in order to fill it.
+   * Only when nothing is floating do we fall back to page-level forms.
    */
   function findContainer() {
-    const visible = (el) => el && C.isVisible(el);
+    const surfaces = floatingSurfaces().filter(
+      (s) => s.blocking || countCandidates(s.el) > 0,
+    );
+    const top = topmost(surfaces);
+    if (top) return top;
 
-    // 1. Topmost open modal.
-    const modals = [...document.querySelectorAll('.ant-modal-wrap')]
-      .filter((w) => visible(w) && getComputedStyle(w).display !== 'none')
-      .map((w) => w.querySelector('.ant-modal-content'))
-      .filter(visible);
-    if (modals.length) {
-      return { el: modals[modals.length - 1], kind: 'modal' };
-    }
-
-    // 2. Open drawer.
-    const drawer = [...document.querySelectorAll('.ant-drawer-open .ant-drawer-body')].filter(visible);
-    if (drawer.length) return { el: drawer[drawer.length - 1], kind: 'drawer' };
-
-    // 3. The page form with the most fillable controls.
-    const forms = [...document.querySelectorAll('form, .c-form, .cc-form')].filter(visible);
+    // The page form with the most fillable controls.
+    const forms = [...document.querySelectorAll('form, .c-form, .cc-form')].filter((f) =>
+      C.isVisible(f),
+    );
     let best = null;
     let bestCount = 0;
     for (const f of forms) {
@@ -59,35 +154,58 @@
         bestCount = n;
       }
     }
-    if (best && bestCount > 0) return { el: best, kind: 'form' };
+    if (best && bestCount > 0) return { el: best, shell: best, kind: 'form', floating: false };
 
-    // 4. Nothing structured — scan the page and lean on the noise filters.
-    return { el: document.body, kind: 'page' };
+    // Nothing structured — scan the page and lean on the noise filters.
+    return { el: document.body, shell: document.body, kind: 'page', floating: false };
   }
 
+  /**
+   * How many fillable controls a region holds.
+   *
+   * Option portals are discounted: a table's filter dropdown is full of
+   * inputs, and counting them would let it pose as a form worth filling.
+   */
   function countCandidates(root) {
-    return collectRoots(root).length;
+    return collectRoots(root).filter((e) => !e.el.closest(ALWAYS_NOISE)).length;
   }
 
   /** A short human name for the detected container, shown in the popup. */
   function containerTitle(container) {
-    const el = container.el;
-    const t =
-      el.querySelector('.ant-modal-title, .ant-drawer-title')?.textContent ||
-      el.querySelector('.form-title, h1, h2, h3')?.textContent ||
-      '';
-    return C.clean(t).slice(0, 80);
+    const shell = container.shell || container.el;
+    const titled =
+      shell.querySelector('.ant-modal-title, .ant-drawer-title, .ant-popover-title') ||
+      container.el.querySelector('.form-title, h1, h2, h3');
+    if (titled) {
+      const t = C.clean(titled.textContent);
+      if (t) return t.slice(0, 80);
+    }
+    // A custom dialog names itself through ARIA rather than a class.
+    const aria =
+      shell.getAttribute?.('aria-label') ||
+      (shell.getAttribute?.('aria-labelledby') || '')
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((id) => document.getElementById(id)?.textContent || '')
+        .join(' ');
+    return C.clean(aria).slice(0, 80);
   }
 
   /* ---------------------------------------------------------------- *
    * Candidate collection
    * ---------------------------------------------------------------- */
 
-  /** Open portals are never part of the form, wherever they sit. */
+  /**
+   * Portals that are never a form, wherever they sit.
+   *
+   * These hold a widget's own options or a table's filters, so their inputs
+   * belong to a control we already collected rather than to the record. A
+   * plain `.ant-dropdown` is deliberately absent: `dropdownRender` can put a
+   * real form in one, so it is judged against the chosen container instead.
+   */
   const ALWAYS_NOISE = [
     '.ant-select-dropdown',
     '.ant-picker-dropdown',
-    '.ant-dropdown',
     '.ant-table-filter-dropdown',
   ].join(',');
 
@@ -104,7 +222,14 @@
   ].join(',');
 
   /** Floating layers. Only the one we picked counts. */
-  const FLOATING = '.ant-modal-wrap, .ant-drawer';
+  const FLOATING = [
+    '.ant-modal-wrap',
+    '.ant-drawer',
+    '.ant-popover',
+    '.ant-dropdown',
+    'dialog',
+    GENERIC_DIALOG,
+  ].join(',');
 
   /**
    * Reject controls that are on screen but not part of the record.
@@ -465,7 +590,9 @@
    * page-level scan.
    */
   function looksLikeSearch(label, placeholder, container) {
-    if (container.kind === 'modal' || container.kind === 'drawer') return false;
+    // Inside a surface the user had to open, every control is there on
+    // purpose — including the search box of a filter popover.
+    if (container.floating) return false;
     const text = `${label} ${placeholder}`.toLowerCase();
     return /^\s*search\b|search by|filter\b|quick find/.test(text);
   }
@@ -474,8 +601,18 @@
    * Entry point
    * ---------------------------------------------------------------- */
 
+  /**
+   * The container the last scan settled on.
+   *
+   * Kept so the fill step can read validation messages out of the same region
+   * rather than the whole document — with a modal open, the page behind it is
+   * usually still showing errors of its own.
+   */
+  let lastContainer = null;
+
   async function scan({ overwrite = false } = {}) {
     const container = findContainer();
+    lastContainer = container;
     const entries = collectRoots(container.el).filter(
       (e) => C.isVisible(e.el) && !isNoise(e.el, container),
     );
@@ -574,5 +711,12 @@
     };
   }
 
-  KPAF.scan = { scan, findContainer, dropdownFor, innerInput, currentValue };
+  KPAF.scan = {
+    scan,
+    findContainer,
+    dropdownFor,
+    innerInput,
+    currentValue,
+    lastContainer: () => lastContainer,
+  };
 })();

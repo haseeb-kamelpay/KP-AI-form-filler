@@ -507,10 +507,15 @@
    * failing Yup rule has painted its message next to the field. Attributing a
    * message back to a field is done by containment: the nearest wrapper that
    * holds both the message and exactly one of our controls.
+   *
+   * Scoped to whatever the scan settled on, because a modal or a drawer sits
+   * over a page that is often showing stale errors of its own — unattributable
+   * ones that would otherwise be fed back to the model as things to fix.
    */
   function readErrors(fields) {
+    const scope = S().lastContainer()?.el || document;
     const nodes = [
-      ...document.querySelectorAll(
+      ...scope.querySelectorAll(
         '.c-field-container .error, .ant-form-item-explain-error, div.color-error',
       ),
     ];
