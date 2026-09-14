@@ -1,11 +1,11 @@
 ---
-name: kamelpay-autofiller
-description: Architecture and navigation guide for the KamelPay AutoFiller Chrome extension — an MV3 extension that scans React/Ant Design/Formik forms, asks DeepSeek for test data, and types it in. Use when reading, debugging, or changing anything in this repo — the service worker, the kpaf-* content scripts, the prompt/domain/deepseek libs, the popup or the options page — or when the question involves form detection, field classification, antd Select/DatePicker filling, Yup validation rules, the retry pass, or why a field was skipped.
+name: kp-autofiller
+description: Architecture and navigation guide for the KP AutoFiller Chrome extension — an MV3 extension that scans React/Ant Design/Formik forms, asks DeepSeek for test data, and types it in. Use when reading, debugging, or changing anything in this repo — the service worker, the kpaf-* content scripts, the prompt/domain/deepseek libs, the popup or the options page — or when the question involves form detection, field classification, antd Select/DatePicker filling, Yup validation rules, the retry pass, or why a field was skipped.
 ---
 
-# KamelPay AutoFiller — architecture
+# KP AutoFiller — architecture
 
-A Chrome MV3 extension. It reads the form currently on screen in a KamelPay
+A Chrome MV3 extension. It reads the form currently on screen in a KP
 portal, asks DeepSeek for test data that fits it, and types the result in.
 Plain JavaScript, no build step, no dependencies, no tests. What you edit is
 what Chrome loads.
@@ -77,7 +77,7 @@ of its own** — it renders whatever the worker last wrote.
 | [src/content/kpaf-main.js](../../../src/content/kpaf-main.js) | 128 | Message router in the page; holds live field state; toasts |
 | [src/lib/deepseek.js](../../../src/lib/deepseek.js) | 144 | OpenAI-compatible chat client, HTTP error translation |
 | [src/lib/prompt.js](../../../src/lib/prompt.js) | 208 | System prompt, field serialisation, tolerant response parsing |
-| [src/lib/domain.js](../../../src/lib/domain.js) | 276 | KamelPay Yup rules → prompt specs + local repair |
+| [src/lib/domain.js](../../../src/lib/domain.js) | 276 | KP Yup rules → prompt specs + local repair |
 | [src/popup/](../../../src/popup/) | | Run button, live status, results breakdown |
 | [src/options/](../../../src/options/) | | API key, model, `overwrite`, `autoRetry` |
 
@@ -129,7 +129,7 @@ Break one of these and the extension fails in a way that is hard to trace.
 
 | Goal | Touch |
 | --- | --- |
-| Add/adjust a KamelPay validation rule | `DOMAIN_RULES` ([domain.js:81](../../../src/lib/domain.js#L81)) — see [task-recipes.md](references/task-recipes.md#add-a-domain-rule) |
+| Add/adjust a KP validation rule | `DOMAIN_RULES` ([domain.js:81](../../../src/lib/domain.js#L81)) — see [task-recipes.md](references/task-recipes.md#add-a-domain-rule) |
 | Support a new widget type | 5 places in scan + fill — see [task-recipes.md](references/task-recipes.md#support-a-new-widget-kind) |
 | Change what the model is told | `SYSTEM_PROMPT` ([prompt.js:23](../../../src/lib/prompt.js#L23)) and `describeField()` ([prompt.js:81](../../../src/lib/prompt.js#L81)) |
 | Swap the AI provider | `deepseek.js` — base URL, model name, `JSON_MODE_MODELS`. `prompt.js`/`domain.js` are provider-agnostic |

@@ -20,7 +20,7 @@ import { ruleFor } from './domain.js';
  */
 const MAX_OPTIONS_IN_PROMPT = 150;
 
-const SYSTEM_PROMPT = `You generate realistic test data for QA engineers working on KamelPay, a UAE-based HR, payroll and employee-banking platform. Its internal portals (Admin, Employer) are React apps validated with Formik and Yup.
+const SYSTEM_PROMPT = `You generate realistic test data for QA engineers working on KP, a UAE-based HR, payroll and employee-banking platform. Its internal portals (Admin, Employer) are React apps validated with Formik and Yup.
 
 You will be given a JSON description of the form fields currently on screen. You return JSON describing what to put in each one.
 
@@ -73,7 +73,7 @@ Rules for each entry:
   government identifier. Everything must be plainly synthetic test data.
 - Keep values short and sane. These are test records, not prose.
 
-## KamelPay specifics
+## KP specifics
 
 - A "Document Name" dropdown on an employee form gates what its "Document
   Number" field accepts. Pick "Emirates Id" when it is offered — the Add
@@ -145,7 +145,7 @@ export function buildMessages({ fields, pageTitle, url, formTitle, previousError
   };
 
   let user =
-    'Generate test data as JSON for the following KamelPay form.\n\n' +
+    'Generate test data as JSON for the following KP form.\n\n' +
     JSON.stringify(payload, null, 2);
 
   if (previousErrors?.length) {

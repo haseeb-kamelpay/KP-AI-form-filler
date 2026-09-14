@@ -1,6 +1,6 @@
-# KamelPay AutoFiller
+# KP AutoFiller
 
-A local Chrome extension that fills KamelPay portal forms with one click. It reads the form
+A local Chrome extension that fills KP portal forms with one click. It reads the form
 that is on screen, asks DeepSeek for test data that fits it, and types the result in.
 
 Built for the three portals in `hrcms`:
@@ -43,7 +43,7 @@ popup  ──run──▶  service worker
                       │  1. inject content scripts (activeTab)
                       │  2. scan  ──▶ page: fields + dropdown options
                       │  3. DeepSeek ──▶ JSON plan
-                      │  4. repair the plan against KamelPay's Yup rules
+                      │  4. repair the plan against KP's Yup rules
                       │  5. fill  ──▶ page: type, select, pick dates
                       │  6. read back the app's own validation errors
                       │  7. one corrective round-trip, if any errors
@@ -131,7 +131,7 @@ and left as the app set it.
 Constraints come from three places:
 
 1. **The DOM** — `maxlength`, `min`, `max`, `pattern`, required markers.
-2. **`src/lib/domain.js`** — KamelPay's own rules, lifted from the Yup schemas in the repos.
+2. **`src/lib/domain.js`** — KP's own rules, lifted from the Yup schemas in the repos.
    Each one is injected into the prompt *and* enforced locally afterwards, so a value the model
    still gets wrong is regenerated instead of typed in:
 
@@ -225,7 +225,7 @@ src/
   lib/
     deepseek.js                  API client
     prompt.js                    prompt construction + response parsing
-    domain.js                    KamelPay validation rules and local repair
+    domain.js                    KP validation rules and local repair
   popup/                         the one-click UI and the results panel
   options/                       API key and behaviour settings
 ```

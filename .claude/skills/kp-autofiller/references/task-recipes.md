@@ -6,7 +6,7 @@ three.
 
 ## Add a domain rule
 
-When a KamelPay field has a Yup rule the extension does not yet know about.
+When a KP field has a Yup rule the extension does not yet know about.
 
 1. **Find the real rule.** These are lifted from Yup schemas in the `hrcms`
    repos (`client/admin`, `client/employer`, `clientV2/employer`). Cite the

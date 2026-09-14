@@ -66,7 +66,7 @@
     ok(t('scan: a filled range is seen as filled'), /already filled/.test(skipped.get('Validity') || ''), skipped.get('Validity'));
     eq(t('scan: Remarks kind'), kindOf('Remarks'), 'textarea');
     eq(t('scan: Employee Type kind'), kindOf('Employee Type'), 'radio');
-    eq(t('scan: Employee Type options'), byLabel.get('Employee Type')?.options.map((o) => o.label), ['KamelPay', 'Other Bank']);
+    eq(t('scan: Employee Type options'), byLabel.get('Employee Type')?.options.map((o) => o.label), ['KP', 'Other Bank']);
     eq(t('scan: Notifications kind'), kindOf('Notifications'), 'switch');
     ok(t('scan: Active is a checkbox'), kindOf('Active') === 'checkbox', kindOf('Active'));
 

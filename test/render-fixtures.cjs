@@ -119,7 +119,7 @@ const cases = [
   field('textarea', 'Remarks', false, h(Input.TextArea, { name: 'remarks' })),
   field('radio', 'Employee Type', true,
     h(Radio.Group, {
-      options: [{ value: 'KAMELPAY', label: 'KamelPay' }, { value: 'OTHER_BANK', label: 'Other Bank' }],
+      options: [{ value: 'KP', label: 'KP' }, { value: 'OTHER_BANK', label: 'Other Bank' }],
     })),
   field('checkbox', 'Active', false, h(Checkbox, { name: 'active' }, 'Active')),
   field('switch', 'Notifications', false, h(Switch, null)),

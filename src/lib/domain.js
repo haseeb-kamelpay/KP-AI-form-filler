@@ -1,5 +1,5 @@
 /**
- * KamelPay domain rules.
+ * KP domain rules.
  *
  * Every rule here was lifted from a real Yup schema in the hrcms repos
  * (client/admin, client/employer, clientV2/employer). They are used twice:
@@ -30,7 +30,7 @@ const upperAlnum = (n) => {
 };
 
 /* ------------------------------------------------------------------ *
- * Generators for KamelPay's structured identifiers
+ * Generators for KP's structured identifiers
  * ------------------------------------------------------------------ */
 
 // UAE IBAN: "AE" + 2 check digits + 3-digit bank code + 16-digit account.
@@ -189,7 +189,7 @@ export const DOMAIN_RULES = [
   {
     id: 'address',
     match: /^(work\s*)?address$|street|building/i,
-    spec: 'A short UAE street address of at most 40 characters (several KamelPay address fields cap at 40).',
+    spec: 'A short UAE street address of at most 40 characters (several KP address fields cap at 40).',
     regex: /^.{1,40}$/,
     gen: () => `${randInt(1, 400)} ${pick(['Al Wasl', 'Jumeirah', 'Al Barsha', 'Khalifa', 'Corniche', 'Hamdan'])} St`,
   },
