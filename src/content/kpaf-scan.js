@@ -207,6 +207,8 @@
     '.ant-select-dropdown',
     '.ant-picker-dropdown',
     '.ant-table-filter-dropdown',
+    // clientV2's EstablishmentSelect portals its panel to <body>.
+    '.establishment-select__panel',
   ].join(',');
 
   /** Page furniture: real noise, unless it happens to wrap our container. */
@@ -270,10 +272,24 @@
       out.push({ el, kind });
     };
 
+    // clientV2's EstablishmentSelect is not an antd Select at all: a custom
+    // `div[role=combobox]` face over a portalled panel of rows.
+    for (const el of root.querySelectorAll('.establishment-select')) {
+      add(el, 'kp-establishment');
+    }
+
     for (const el of root.querySelectorAll('.ant-select')) {
       if (el.closest('.ant-select-dropdown')) continue;
       // A nested select inside another select's render is not its own field.
       if (el.parentElement?.closest('.ant-select') && el.parentElement.closest('.ant-select') !== el) {
+        continue;
+      }
+      // A select sitting in another input's prefix/suffix decorates that input
+      // — v2's Full Name carries the Mr./Ms. title select in its prefix — so it
+      // is the host field's ornament, not a field of its own. Collected anyway
+      // so the scan can say why it was left alone.
+      if (el.closest('.ant-input-prefix, .ant-input-suffix')) {
+        add(el, 'affix-select');
         continue;
       }
       add(el, 'antd-select');
@@ -293,14 +309,14 @@
     for (const el of root.querySelectorAll('.ant-checkbox-group')) add(el, 'antd-checkbox-group');
 
     for (const el of root.querySelectorAll('textarea')) {
-      if (el.closest('.ant-select, .ant-picker')) continue;
+      if (el.closest('.ant-select, .ant-picker, .establishment-select')) continue;
       add(el, 'textarea');
     }
 
     for (const el of root.querySelectorAll('select')) add(el, 'native-select');
 
     for (const el of root.querySelectorAll('input')) {
-      if (el.closest('.ant-select, .ant-picker')) continue;
+      if (el.closest('.ant-select, .ant-picker, .establishment-select')) continue;
       const type = (el.type || 'text').toLowerCase();
       if (['hidden', 'submit', 'button', 'reset', 'image', 'file'].includes(type)) continue;
       if (type === 'checkbox' || type === 'radio') {
@@ -310,6 +326,15 @@
       }
       add(el, 'text');
     }
+
+    // Fill order follows the page, not the order these selectors happened to
+    // run in: dependent controls (state after country, branch after bank,
+    // document number after document type) only settle once the field above
+    // them has a value.
+    out.sort((a, b) => {
+      if (a.el === b.el) return 0;
+      return a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
+    });
 
     return out;
   }
@@ -321,6 +346,8 @@
   /** Map the DOM control onto one of the kinds the prompt documents. */
   function kindOf(entry, el) {
     switch (entry.kind) {
+      case 'kp-establishment':
+        return 'select';
       case 'antd-select':
         return el.classList.contains('ant-select-multiple') ? 'multiselect' : 'select';
       case 'antd-range':
@@ -359,7 +386,8 @@
   /** The `<input>` a control writes through, for reading/writing values. */
   function innerInput(entry) {
     const { el, kind } = entry;
-    if (kind === 'antd-select') return el.querySelector('input.ant-select-selection-search-input');
+    if (kind === 'kp-establishment') return el.querySelector('.establishment-select__face') || el;
+    if (kind === 'antd-select' || kind === 'affix-select') return searchInputFor(el);
     if (kind === 'antd-picker' || kind === 'antd-range') return el.querySelector('input');
     if (kind === 'antd-radio') return el.querySelector('input.ant-radio-input');
     if (kind === 'antd-switch') return el;
@@ -379,6 +407,10 @@
     const { el, kind } = entry;
 
     switch (kind) {
+      case 'kp-establishment': {
+        const face = el.querySelector('.establishment-select__face');
+        return !!face && !face.classList.contains('establishment-select__face--disabled');
+      }
       case 'antd-select':
         return !el.classList.contains('ant-select-disabled');
       case 'antd-picker':
@@ -400,12 +432,11 @@
   function currentValue(entry) {
     const { el, kind } = entry;
     switch (kind) {
-      case 'antd-select': {
-        const items = [...el.querySelectorAll('.ant-select-selection-item')]
-          .map((n) => C.clean(n.getAttribute('title') || n.textContent))
-          .filter(Boolean);
-        return items.join(', ');
-      }
+      case 'affix-select':
+      case 'antd-select':
+        return selectedLabels(el).join(', ');
+      case 'kp-establishment':
+        return establishmentValue(el);
       case 'antd-picker':
         return el.querySelector('input')?.value || '';
       case 'antd-range':
@@ -477,12 +508,133 @@
   }
 
   /* ---------------------------------------------------------------- *
+   * Reading an antd Select, across antd 5 and antd 6
+   * ---------------------------------------------------------------- */
+
+  /**
+   * antd 6 rebuilt the Select's internals, and the old selectors are gone:
+   *
+   *   antd 5  .ant-select-selector > .ant-select-selection-item
+   *           input.ant-select-selection-search-input
+   *   antd 6  .ant-select-content(.ant-select-content-has-value)[title]
+   *           input.ant-select-input
+   *
+   * In antd 6 a single select's chosen label is a bare text node inside
+   * `-content` — there is no element wrapping it — so the `-has-value` class
+   * and the `title` attribute are the handles. Multiple mode still renders one
+   * `-selection-item` per chip in both versions.
+   *
+   * Every read goes through here so clientV2 (antd 6) and the v1 portals
+   * (antd 5) are both answered correctly. Getting this wrong is what made a
+   * dropdown that filled perfectly report "the selection did not stick".
+   */
+  function selectedLabels(el) {
+    const chips = [...el.querySelectorAll('.ant-select-selection-item')]
+      .map((n) => C.clean(n.getAttribute('title') || n.textContent))
+      .filter(Boolean);
+    if (chips.length) return chips;
+
+    const content = el.querySelector('.ant-select-content-has-value');
+    if (!content) return [];
+    // `title` is the option's own label; the text fallback covers a custom
+    // `optionRender` where antd leaves the attribute off.
+    const label = C.clean(content.getAttribute('title') || content.textContent);
+    return label ? [label] : [];
+  }
+
+  /** The Select's search box, under either antd's class name. */
+  const searchInputFor = (el) =>
+    el.querySelector('input.ant-select-selection-search-input, input.ant-select-input');
+
+  /** The element that opens the Select when clicked. */
+  const selectOpener = (el) =>
+    el.querySelector(':scope > .ant-select-selector') ||
+    el.querySelector(':scope > .ant-select-content') ||
+    el;
+
+  /* ---------------------------------------------------------------- *
+   * EstablishmentSelect (clientV2)
+   * ---------------------------------------------------------------- */
+
+  const establishmentFace = (el) => el.querySelector('.establishment-select__face');
+
+  /** The selected business unit(s), read off the trigger face. */
+  function establishmentValue(el) {
+    const chips = [...el.querySelectorAll('.establishment-select__chip')]
+      .map((n) => C.clean(n.textContent))
+      .filter(Boolean);
+    if (chips.length) return chips.join(', ');
+    return C.clean(el.querySelector('.establishment-select__value')?.textContent || '');
+  }
+
+  /**
+   * The open panel. It is portalled to <body>, and nothing on it points back at
+   * the select that opened it, so the only safe rule is: at most one panel is
+   * ever open, so a visible one belongs to whatever we just clicked.
+   */
+  function establishmentPanel() {
+    return (
+      [...document.querySelectorAll('.establishment-select__panel')].find(
+        (p) => C.isVisible(p) && !p.closest('.ant-dropdown-hidden'),
+      ) || null
+    );
+  }
+
+  /** Selectable rows in the panel, labelled by company name. */
+  function establishmentRows(panel) {
+    if (!panel) return [];
+    return [...panel.querySelectorAll('.establishment-select__row')]
+      .filter((row) => !row.classList.contains('establishment-select__row--disabled'))
+      .map((row) => ({
+        el: row,
+        label: C.clean(
+          row.querySelector('.entity-info__title')?.textContent || row.textContent,
+        ),
+      }))
+      .filter((row) => row.label);
+  }
+
+  /**
+   * Open the establishment panel and read its rows.
+   *
+   * The hierarchy renders expanded by default, so every unit is present
+   * without having to drive the expand chevrons.
+   */
+  async function readEstablishmentOptions(el) {
+    const face = establishmentFace(el);
+    if (!face) return { options: [], note: 'the business unit selector has no trigger' };
+
+    C.realClick(face);
+    await C.tick(160);
+
+    let panel = establishmentPanel();
+    if (!panel) {
+      // The panel mounts lazily the first time it is opened.
+      await C.tick(220);
+      panel = establishmentPanel();
+    }
+    if (!panel) return { options: [], note: 'the business unit panel did not open' };
+
+    const rows = establishmentRows(panel);
+    const options = rows.slice(0, MAX_OPTIONS).map((row, i) => ({ i, label: row.label }));
+
+    C.pressEscape(face);
+    C.realClick(document.body);
+    await C.tick(80);
+
+    if (!options.length) {
+      return { options: [], note: 'no business units are available to pick' };
+    }
+    return { options };
+  }
+
+  /* ---------------------------------------------------------------- *
    * Dropdown options
    * ---------------------------------------------------------------- */
 
   /** Locate the portal that belongs to a given antd Select. */
   function dropdownFor(selectEl) {
-    const input = selectEl.querySelector('input.ant-select-selection-search-input');
+    const input = searchInputFor(selectEl);
     const listId = input?.getAttribute('aria-controls');
     if (listId) {
       const list = document.getElementById(listId);
@@ -503,8 +655,8 @@
    * nationalities, employers) have to be scrolled to be enumerated. We walk
    * the viewport down in screenfuls until nothing new appears.
    */
-  async function readSelectOptions(selectEl) {
-    const opener = selectEl.querySelector('.ant-select-selector') || selectEl;
+  async function readSelectOptions(selectEl, { label, placeholder } = {}) {
+    const opener = selectOpener(selectEl);
     C.realClick(opener);
     await C.tick(120);
 
@@ -517,10 +669,15 @@
     const seen = new Map();
     const harvest = () => {
       for (const node of dd.querySelectorAll('.ant-select-item-option')) {
-        const label = C.clean(node.getAttribute('title') || node.textContent);
-        if (!label) continue;
+        const text = C.clean(node.getAttribute('title') || node.textContent);
+        if (!text) continue;
         if (node.classList.contains('ant-select-item-option-disabled')) continue;
-        if (!seen.has(label)) seen.set(label, { label });
+        // v1's blank `<Select.Option value="">` — picking it writes '' and
+        // fails the field's own required rule.
+        if (C.isPlaceholderChoice(text, label) || (placeholder && text === C.clean(placeholder))) {
+          continue;
+        }
+        if (!seen.has(text)) seen.set(text, { label: text });
       }
     };
 
@@ -554,7 +711,6 @@
 
     const options = [...seen.values()]
       .map((o, i) => ({ i, label: o.label }))
-      // The v1 CField renders a blank placeholder option; it is not a choice.
       .filter((o) => o.label && o.label.length > 0);
 
     return { options: options.slice(0, MAX_OPTIONS) };
@@ -634,8 +790,19 @@
       const placeholder =
         el.querySelector?.('input, textarea')?.getAttribute('placeholder') ||
         el.getAttribute?.('placeholder') ||
+        // antd 5, then antd 6, then clientV2's own establishment selector.
         el.querySelector?.('.ant-select-selection-placeholder')?.textContent ||
+        el.querySelector?.('.ant-select-placeholder')?.textContent ||
+        el.querySelector?.('.establishment-select__placeholder')?.textContent ||
         '';
+
+      if (entry.kind === 'affix-select') {
+        skipped.push({
+          label: label || '(unlabelled)',
+          reason: 'a selector inside another field\u2019s input (left as the app set it)',
+        });
+        continue;
+      }
 
       if (!isEntryInteractive(entry)) {
         skipped.push({ label: label || '(unlabelled)', reason: 'disabled or read-only' });
@@ -648,8 +815,12 @@
       }
 
       const existing = currentValue(entry);
+      const isDropdown = kind === 'select' || kind === 'multiselect';
       const hasValue =
-        typeof existing === 'boolean' ? false : Boolean(existing && String(existing).trim());
+        typeof existing === 'boolean'
+          ? false
+          : Boolean(existing && String(existing).trim()) &&
+            !(isDropdown && C.isPlaceholderChoice(existing, label));
       if (hasValue && !overwrite) {
         skipped.push({ label: label || '(unlabelled)', reason: `already filled: "${String(existing).slice(0, 30)}"` });
         continue;
@@ -675,8 +846,11 @@
       }
 
       if (kind === 'select' || kind === 'multiselect') {
-        if (entry.kind === 'antd-select') {
-          const { options, note } = await readSelectOptions(el);
+        if (entry.kind === 'antd-select' || entry.kind === 'kp-establishment') {
+          const { options, note } =
+            entry.kind === 'kp-establishment'
+              ? await readEstablishmentOptions(el)
+              : await readSelectOptions(el, { label, placeholder });
           field.options = options;
           if (note) field.scanNote = note;
           if (!options.length) {
@@ -717,6 +891,13 @@
     dropdownFor,
     innerInput,
     currentValue,
+    selectedLabels,
+    searchInputFor,
+    selectOpener,
+    establishmentFace,
+    establishmentValue,
+    establishmentPanel,
+    establishmentRows,
     lastContainer: () => lastContainer,
   };
 })();

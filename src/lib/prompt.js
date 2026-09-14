@@ -71,7 +71,16 @@ Rules for each entry:
   fall back to the same handful of names, numbers or companies each time.
 - Never output a real person's identity, a real bank account, or any real
   government identifier. Everything must be plainly synthetic test data.
-- Keep values short and sane. These are test records, not prose.`;
+- Keep values short and sane. These are test records, not prose.
+
+## KamelPay specifics
+
+- A "Document Name" dropdown on an employee form gates what its "Document
+  Number" field accepts. Pick "Emirates Id" when it is offered — the Add
+  Employee form refuses to submit unless at least one document is an Emirates
+  Id or a Passport — and give the number as 15 bare digits.
+- Identifier fields never carry display formatting. Emirates ID, IBAN and TRN
+  go in unpunctuated: no dashes, no spaces, no country dial code.`;
 
 /**
  * Reduce a scanned field to the minimum the model needs. Dropping DOM noise
@@ -100,7 +109,12 @@ function describeField(field) {
   }
   if (Object.keys(constraints).length) out.constraints = constraints;
 
-  const rule = ruleFor(field);
+  // Format rules describe text a model has to compose. A dropdown's value is
+  // an index into options we scraped, so attaching one there only invites a
+  // free-text answer — clientV2's "Business Unit ID" is a picker, not a field
+  // you can type an id into.
+  const optionBased = ['select', 'multiselect', 'radio'].includes(field.kind);
+  const rule = optionBased ? null : ruleFor(field);
   if (rule) out.rule = rule.spec;
 
   if (Array.isArray(field.options) && field.options.length) {
@@ -137,7 +151,8 @@ export function buildMessages({ fields, pageTitle, url, formTitle, previousError
   if (previousErrors?.length) {
     user +=
       '\n\nA previous attempt was rejected by the page. Fix these fields; the ' +
-      'message shown next to each one is the application\'s own validation error:\n' +
+      'message next to each one is either the application\'s own validation ' +
+      'error or the reason the widget refused the value:\n' +
       previousErrors
         .map((e) => `- ${e.label || e.uid} (uid ${e.uid}): ${e.message}`)
         .join('\n') +

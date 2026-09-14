@@ -203,9 +203,16 @@ async function runFill(tabId, { overwriteOverride } = {}) {
     let errors = filled.errors;
     let retried = false;
 
+    // A widget that refused the value is as much a reason to try again as a
+    // Yup message is — a date the calendar rejects outright never gets as far
+    // as being validated, so waiting for a painted error would leave it empty.
+    const refused = results
+      .filter((r) => !r.ok && !r.skipped && r.error)
+      .map((r) => ({ uid: r.uid, label: r.label, message: r.error }));
+
     // One corrective pass, using the app's own validation messages as the
     // brief. Anything still failing after this is reported rather than looped.
-    if (settings.autoRetry && errors.length) {
+    if (settings.autoRetry && (errors.length || refused.length)) {
       retried = true;
       await setRunState({ phase: 'retrying', results, errors, notes });
 
@@ -214,7 +221,7 @@ async function runFill(tabId, { overwriteOverride } = {}) {
         pageTitle: scan.pageTitle,
         url: scan.url,
         formTitle: scan.container?.title,
-        previousErrors: errors,
+        previousErrors: [...errors, ...refused],
       });
 
       try {

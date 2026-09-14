@@ -69,8 +69,8 @@
       return { ok: false, error: 'the dropdown is disabled' };
     }
 
-    const opener = root.querySelector('.ant-select-selector') || root;
-    const searchInput = root.querySelector('input.ant-select-selection-search-input');
+    const opener = S().selectOpener(root);
+    const searchInput = S().searchInputFor(root);
     const chosen = [];
     const warnings = [];
 
@@ -91,7 +91,7 @@
         await C.tick(260); // several selects debounce their search by 800ms/type
       }
 
-      let node = findOption(dd, wanted);
+      let node = findOption(dd, wanted, field.label);
 
       if (!node && searchable) {
         // Filtering may have hidden it (server-side search, debounce). Clear
@@ -99,11 +99,11 @@
         C.setNativeValue(searchInput, '');
         await C.tick(220);
         dd = S().dropdownFor(root) || dd;
-        node = findOption(dd, wanted);
+        node = findOption(dd, wanted, field.label);
       }
 
       if (!node) {
-        node = firstSelectableOption(dd);
+        node = firstSelectableOption(dd, field.label);
         if (node) {
           warnings.push(
             `"${wanted}" was not in the list; used "${C.clean(node.getAttribute('title') || node.textContent)}"`,
@@ -130,9 +130,10 @@
     if (searchInput) C.blur(searchInput);
     await C.tick(40);
 
-    const shown = [...root.querySelectorAll('.ant-select-selection-item')]
-      .map((n) => C.clean(n.getAttribute('title') || n.textContent))
-      .filter(Boolean);
+    // Read back through the scanner's version-aware reader: antd 6 renders a
+    // single select's value as a bare text node in `.ant-select-content`, with
+    // none of antd 5's `-selection-item` elements to find.
+    const shown = S().selectedLabels(root);
 
     if (!shown.length) {
       return { ok: false, error: 'the selection did not stick' };
@@ -145,11 +146,9 @@
     };
   }
 
-  function findOption(dd, wanted) {
+  function findOption(dd, wanted, fieldLabel) {
     if (!dd || !wanted) return null;
-    const nodes = [...dd.querySelectorAll('.ant-select-item-option')].filter(
-      (n) => !n.classList.contains('ant-select-item-option-disabled'),
-    );
+    const nodes = selectableOptions(dd, fieldLabel);
     const target = wanted.toLowerCase();
 
     return (
@@ -160,15 +159,86 @@
     );
   }
 
-  function firstSelectableOption(dd) {
-    if (!dd) return null;
-    return (
-      [...dd.querySelectorAll('.ant-select-item-option')].find(
-        (n) =>
-          !n.classList.contains('ant-select-item-option-disabled') &&
-          C.clean(n.textContent).length > 0,
-      ) || null
-    );
+  function firstSelectableOption(dd, fieldLabel) {
+    return selectableOptions(dd, fieldLabel)[0] || null;
+  }
+
+  /**
+   * Options that are real choices.
+   *
+   * Excludes the disabled ones and v1's blank `<Select.Option value="">`, whose
+   * label is the field's placeholder — clicking it writes '' and fails the
+   * field's own required rule, which is worse than reporting no match.
+   */
+  function selectableOptions(dd, fieldLabel) {
+    if (!dd) return [];
+    return [...dd.querySelectorAll('.ant-select-item-option')].filter((n) => {
+      if (n.classList.contains('ant-select-item-option-disabled')) return false;
+      const text = C.clean(n.getAttribute('title') || n.textContent);
+      return text.length > 0 && !C.isPlaceholderChoice(text, fieldLabel);
+    });
+  }
+
+  /* ---------------------------------------------------------------- *
+   * EstablishmentSelect (clientV2)
+   * ---------------------------------------------------------------- */
+
+  /**
+   * Pick a business unit.
+   *
+   * Not an antd Select: a `div[role=combobox]` face over a panel of rows
+   * portalled to <body>, so none of the Select machinery applies — no search
+   * box, no `.ant-select-item-option`, and the value shows up as
+   * `.establishment-select__value` on the face.
+   */
+  async function fillEstablishment(field, wanted) {
+    const root = field._entry.el;
+    const face = S().establishmentFace(root);
+    if (!face) return { ok: false, error: 'the business unit selector has no trigger' };
+    if (face.classList.contains('establishment-select__face--disabled')) {
+      return { ok: false, error: 'the business unit selector is disabled' };
+    }
+
+    C.realClick(face);
+    await C.tick(180);
+
+    let panel = S().establishmentPanel();
+    if (!panel) {
+      await C.tick(220);
+      panel = S().establishmentPanel();
+    }
+    if (!panel) return { ok: false, error: 'the business unit panel would not open' };
+
+    const rows = S().establishmentRows(panel);
+    if (!rows.length) {
+      C.pressEscape(face);
+      return { ok: false, error: 'the business unit panel is empty' };
+    }
+
+    const target = String(wanted || '').toLowerCase();
+    const match =
+      rows.find((r) => r.label.toLowerCase() === target) ||
+      rows.find((r) => r.label.toLowerCase().includes(target)) ||
+      rows[0];
+
+    const warning =
+      match.label.toLowerCase() === target
+        ? undefined
+        : `"${wanted}" was not in the list; used "${match.label}"`;
+
+    C.realClick(match.el);
+    await C.tick(140);
+
+    // Selecting closes the panel itself; this only covers a stuck one.
+    if (S().establishmentPanel()) {
+      C.pressEscape(face);
+      C.realClick(document.body);
+      await C.tick(80);
+    }
+
+    const shown = S().establishmentValue(root);
+    if (!shown) return { ok: false, error: 'the selection did not stick' };
+    return { ok: true, value: shown, warning };
   }
 
   /* ---------------------------------------------------------------- *
@@ -200,10 +270,18 @@
   /**
    * Type a date into an antd picker and commit it with Enter.
    *
-   * The picker's display format is a prop, invisible from the DOM, so we try
-   * the portals' common formats in turn and keep the first one that commits.
-   * A format that fails to parse leaves the input empty after blur, which is
-   * exactly the signal we check for.
+   * The picker's display format is a prop, invisible from the DOM, so the
+   * portals' common formats are tried in turn until one commits.
+   *
+   * What counts as "committed" is the whole difficulty. Text left in the box
+   * proves nothing: antd keeps whatever you typed while the field still has
+   * focus, and clientV2 has date fields whose placeholder contradicts their
+   * own format — `doj` renders `format: 'DD-MMM-YYYY'` under a
+   * `placeholder: 'DD-MM-YYYY'` — so typing what the placeholder asks for
+   * leaves `01-08-2023` sitting in a picker that parsed nothing, never fired
+   * `onChange`, and left Formik holding null. The form then looked filled and
+   * failed validation on submit. So the commit is verified against the
+   * picker's own state instead, and a date that never lands is reported.
    */
   async function fillDate(field, iso, { datetime = false } = {}) {
     const root = field._entry.el;
@@ -218,32 +296,64 @@
       const text = C.formatDate(iso, fmt);
       if (!text) continue;
 
+      await clearPicker(root, input);
+
       C.realClick(input);
       input.focus();
       await C.tick(70);
-
       C.setNativeValue(input, text);
       await C.tick(90);
       C.pressEnter(input);
-      await C.tick(90);
-
-      if (input.value && !isPickerOpen(root)) {
-        C.blur(input);
-        await C.tick(30);
-        if (input.value) return { ok: true, value: input.value };
-      }
-
-      // Clean up before trying the next format.
-      C.pressEscape(input);
-      C.setNativeValue(input, '');
+      await C.tick(110);
       C.blur(input);
-      await C.tick(40);
+      await C.tick(60);
+
+      if (await pickerHasValue(root, input)) {
+        return { ok: true, value: input.value || text };
+      }
     }
 
+    // Nothing committed. Clear the last attempt's text: leaving it would show
+    // a filled-looking field the app considers empty.
+    await clearPicker(root, input);
     return {
       ok: false,
-      error: `could not enter ${iso} — the calendar rejected it (it may be outside the allowed range)`,
+      error: `could not enter ${iso} — the calendar rejected every format tried (the date may be outside its allowed range)`,
     };
+  }
+
+  /**
+   * Did the picker actually take a value?
+   *
+   * rc-picker renders the clear affordance only when one is committed
+   * (`showClear = clearIcon && value.length`) — true of antd 5 and antd 6
+   * alike, and independent of what text the input happens to be showing.
+   * `allowClear={false}` removes that signal, so the panel is asked instead:
+   * a real value paints a selected cell, rejected text paints none.
+   */
+  async function pickerHasValue(root, input) {
+    if (root.querySelector('.ant-picker-clear')) return true;
+    if (!input.value) return false;
+
+    C.realClick(input);
+    await C.tick(180);
+    const panel = openPickerDropdown();
+    const selected = !!panel?.querySelector('.ant-picker-cell-selected');
+    C.pressEscape(input);
+    C.blur(input);
+    await C.tick(60);
+    return selected;
+  }
+
+  /** Empty the box and dismiss any panel, so the next attempt starts clean. */
+  async function clearPicker(root, input) {
+    if (!input.value && !openPickerDropdown()) return;
+    C.pressEscape(input);
+    await C.tick(40);
+    C.setNativeValue(input, '');
+    await C.tick(40);
+    C.blur(input);
+    await C.tick(40);
   }
 
   async function fillDateRange(field, iso) {
@@ -279,9 +389,13 @@
       C.blur(inputs[1]);
       await C.tick(40);
 
-      if (inputs[0].value && inputs[1].value) {
+      // Both ends must show text *and* the picker must hold a value — typed
+      // text alone survives a parse failure (see `fillDate`).
+      if (inputs[0].value && inputs[1].value && root.querySelector('.ant-picker-clear')) {
         return { ok: true, value: `${inputs[0].value} .. ${inputs[1].value}` };
       }
+      C.setNativeValue(inputs[0], '');
+      C.setNativeValue(inputs[1], '');
       C.pressEscape(inputs[0]);
       await C.tick(40);
     }
@@ -289,10 +403,11 @@
     return { ok: false, error: 'the range picker rejected both formats tried' };
   }
 
-  const isPickerOpen = (root) =>
-    [...document.querySelectorAll('.ant-picker-dropdown')].some(
+  /** The open calendar panel, if there is one. Only ever one at a time. */
+  const openPickerDropdown = () =>
+    [...document.querySelectorAll('.ant-picker-dropdown')].find(
       (d) => !d.classList.contains('ant-picker-dropdown-hidden') && C.isVisible(d),
-    ) && root.classList.contains('ant-picker-focused');
+    ) || null;
 
   /** antd falls back to the format string as the placeholder when none is set. */
   function guessFormatFromPlaceholder(ph) {
@@ -422,9 +537,11 @@
         case 'select': {
           const labels = labelsFrom(field, instruction);
           if (!labels.length) return { ok: false, error: 'the model gave no option to pick' };
-          return field._entry.kind === 'native-select'
-            ? await fillNativeSelect(field, labels[0])
-            : await fillSelect(field, labels.slice(0, 1));
+          if (field._entry.kind === 'native-select') return await fillNativeSelect(field, labels[0]);
+          if (field._entry.kind === 'kp-establishment') {
+            return await fillEstablishment(field, labels[0]);
+          }
+          return await fillSelect(field, labels.slice(0, 1));
         }
         case 'multiselect': {
           const labels = labelsFrom(field, instruction);
